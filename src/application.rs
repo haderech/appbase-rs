@@ -69,13 +69,13 @@ impl Application {
       self.running_plugins.push(plugin.clone());
    }
 
-   pub fn register_plugin<P: 'static>(&mut self) where P: Plugin {
+   pub fn register_plugin<P>(&mut self) where P: Plugin {
      if !self.plugins.contains_key(P::typename().as_str()) {
         self.plugins.insert(P::typename(), Arc::new(Mutex::new(P::new())));
      }
    }
 
-   pub fn get_plugin<P: 'static>(&mut self) -> PluginHandle where P: Plugin {
+   pub fn get_plugin<P>(&mut self) -> PluginHandle where P: Plugin {
       match self.find_plugin(P::typename()) {
          Some(plugin) => plugin,
          None => {
