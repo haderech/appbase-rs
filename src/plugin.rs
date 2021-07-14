@@ -1,10 +1,5 @@
-pub mod heartbeat;
-pub mod jsonrpc;
-pub mod monitor;
-mod template;
-
-use crate::application::PluginHandle;
 extern crate mopa;
+
 use mopa::mopafy;
 
 pub trait Plugin: mopa::Any {
@@ -16,7 +11,6 @@ pub trait Plugin: mopa::Any {
    fn shutdown(&mut self);
    fn state(&self) -> PluginState;
 }
-
 mopafy!(Plugin);
 
 #[derive(PartialEq, Copy, Clone)]

@@ -1,12 +1,13 @@
-use crate::plugin::Plugin;
-
-use futures::lock::Mutex as FutureMutex;
-use jsonrpc_core::{Value};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::broadcast::{channel, Sender, Receiver};
+
+use futures::lock::Mutex as FutureMutex;
+use jsonrpc_core::Value;
+use once_cell::sync::Lazy;
 use tokio::signal;
+use tokio::sync::broadcast::{channel, Receiver, Sender};
+
+use crate::plugin::Plugin;
 
 pub static mut APP: Lazy<Application> = Lazy::new(|| {
    Application::new()
