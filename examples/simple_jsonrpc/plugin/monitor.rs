@@ -1,9 +1,9 @@
-use crate::application::{SubscribeHandle, APP};
-use crate::plugin::heartbeat::HeartbeatPlugin;
-use crate::plugin::jsonrpc::JsonRpcPlugin;
-use crate::plugin::*;
-use crate::{appbase_plugin_default, appbase_plugin_requires, appbase_plugin_requires_visit};
 use std::sync::Arc;
+
+use appbase::*;
+
+use crate::heartbeat::HeartbeatPlugin;
+use crate::jsonrpc::JsonRpcPlugin;
 
 pub struct MonitorPlugin {
     base: PluginBase,

@@ -1,6 +1,4 @@
-use crate::application::APP;
-use crate::plugin::{Plugin, PluginBase, PluginDeps, PluginState};
-use crate::{appbase_plugin_default, appbase_plugin_requires};
+use appbase::*;
 
 /*
  * Plugin typename MUST be unique.

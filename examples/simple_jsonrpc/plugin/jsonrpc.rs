@@ -1,9 +1,9 @@
-use crate::application::APP;
-use crate::plugin::{Plugin, PluginBase, PluginDeps, PluginState};
-use crate::{appbase_plugin_default, appbase_plugin_requires};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use jsonrpc_core::{IoHandler, RpcMethodSimple, RpcMethodSync};
 use jsonrpc_http_server::{CloseHandle, ServerBuilder};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use appbase::*;
 
 pub struct JsonRpcPlugin {
     base: PluginBase,
@@ -18,6 +18,7 @@ appbase_plugin_requires!(JsonRpcPlugin; );
  * After JsonRpcPlugin starts, IoHandler moves into closure, so not available to access from plugin.
  */
 impl JsonRpcPlugin {
+    #[allow(dead_code)]
     pub fn add_sync_method<F>(&mut self, name: String, func: F)
     where
         F: RpcMethodSync,
@@ -28,6 +29,7 @@ impl JsonRpcPlugin {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_method<F>(&mut self, name: String, func: F)
     where
         F: RpcMethodSimple,
