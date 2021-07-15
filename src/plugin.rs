@@ -62,8 +62,9 @@ macro_rules! appbase_plugin_requires_visit {
       unsafe {
          _p1 = APP.get_plugin::<$name>();
       }
-      let mut plugin = _p1.lock().unwrap();
-      plugin.$method();
+      if let Ok(mut plugin) = _p1.try_lock() {
+        plugin.$method();
+      }
    };
 }
 
