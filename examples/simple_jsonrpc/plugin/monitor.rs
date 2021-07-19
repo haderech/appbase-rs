@@ -27,9 +27,7 @@ impl Plugin for MonitorPlugin {
             return;
         }
 
-        unsafe {
-            self.monitor = Some(APP.subscribe_channel("message".to_string()));
-        }
+        self.monitor = Some(app::subscribe_channel("message".to_string()));
     }
 
     fn startup(&mut self) {

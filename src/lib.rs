@@ -1,5 +1,5 @@
-mod application;
+pub mod app;
 mod plugin;
 
-pub use crate::application::*;
+pub use crate::app::*;
 pub use crate::plugin::*;

@@ -58,10 +58,7 @@ macro_rules! appbase_plugin_default {
 #[macro_export]
 macro_rules! appbase_plugin_requires_visit {
    ($name:ty, $method:ident) => {
-      let mut _p1: PluginHandle;
-      unsafe {
-         _p1 = APP.get_plugin::<$name>();
-      }
+      let mut _p1 = app::get_plugin::<$name>();
       if let Ok(mut plugin) = _p1.try_lock() {
         plugin.$method();
       }
@@ -88,9 +85,7 @@ macro_rules! appbase_plugin_requires {
             }
             self.base.state = PluginState::Started;
             $(appbase_plugin_requires_visit!($deps, startup);)*
-            unsafe {
-               APP.plugin_started::<$name>();
-            }
+            app::plugin_started::<$name>();
             log::info!("plugin started: {}", <$name>::typename());
             true
          }

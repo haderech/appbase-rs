@@ -1,14 +1,12 @@
 mod plugin;
 
-use appbase::APP;
+use appbase::app;
 use plugin::*;
 
 #[tokio::main]
 async fn main() {
-   unsafe {
-      APP.register_plugin::<monitor::MonitorPlugin>();
-      APP.initialize();
-      APP.startup();
-      APP.execute().await; // XXX: a better way for graceful shutdown?
-   }
+   app::register_plugin::<monitor::MonitorPlugin>();
+   app::initialize();
+   app::startup();
+   app::execute().await; // XXX: a better way for graceful shutdown?
 }

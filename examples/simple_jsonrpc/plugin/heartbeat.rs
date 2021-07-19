@@ -29,15 +29,10 @@ impl Plugin for HeartbeatPlugin {
             return;
         }
 
-        unsafe {
-            self.channel = Some(APP.get_channel("message".to_string()));
-        }
+        self.channel = Some(app::get_channel("message".to_string()));
         let channel = Arc::clone(&self.channel.as_ref().unwrap());
 
-        let mut _p1: PluginHandle;
-        unsafe {
-            _p1 = APP.get_plugin::<JsonRpcPlugin>();
-        }
+        let mut _p1 = app::get_plugin::<JsonRpcPlugin>();
         let mut plugin = _p1.lock().unwrap();
         let jsonrpc = plugin.downcast_mut::<JsonRpcPlugin>().unwrap();
         jsonrpc.add_sync_method("bounce".to_string(), move |_: Params| {
