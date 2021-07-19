@@ -2,7 +2,7 @@ extern crate mopa;
 
 use mopa::mopafy;
 
-pub trait Plugin: mopa::Any {
+pub trait Plugin: mopa::Any + Sync + Send {
    fn new() -> Self where Self: Sized;
    fn typename() -> String where Self: Sized;
    fn name(&self) -> String;
