@@ -73,8 +73,6 @@ impl Plugin for JsonRpcPlugin {
         tokio::spawn(async {
             server.wait();
         });
-
-        app::plugin_started::<JsonRpcPlugin>();
     }
 
     fn shutdown(&mut self) {
