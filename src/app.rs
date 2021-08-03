@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::lock::Mutex as FutureMutex;
 use jsonrpc_core::Value;
@@ -21,7 +22,7 @@ struct Application {
    plugins: HashMap<String, PluginHandle>,
    running_plugins: Vec<PluginHandle>,
    channels: HashMap<String, ChannelHandle>,
-   is_quiting: bool, // XXX: need mutex?
+   pub is_quiting: AtomicBool,
 }
 
 impl Application {
@@ -30,7 +31,7 @@ impl Application {
          plugins: HashMap::new(),
          running_plugins: Vec::new(),
          channels: HashMap::new(),
-         is_quiting: false,
+         is_quiting: AtomicBool::new(false),
       }
    }
 
@@ -41,7 +42,7 @@ impl Application {
    }
 
    fn startup(&mut self) {
-      if self.is_quiting {
+      if self.is_quiting.load(Ordering::Relaxed) {
          return;
       }
       for plugin in self.plugins.values() {
@@ -56,13 +57,14 @@ impl Application {
    }
 
    fn quit(&mut self) {
-      self.is_quiting = true;
+      self.is_quiting.store(true, Ordering::Relaxed);
    }
 
    fn shutdown(&mut self) {
       for plugin in self.running_plugins.iter().rev() {
          plugin.lock().unwrap().shutdown();
       }
+      self.quit();
    }
 }
 
@@ -143,4 +145,10 @@ pub fn get_channel(name: String) -> ChannelHandle {
 
 pub fn subscribe_channel(name: String) -> SubscribeHandle {
    Arc::new(FutureMutex::new(get_channel(name).lock().unwrap().subscribe()))
+}
+
+pub fn is_quiting() -> bool {
+   unsafe {
+      APP.is_quiting.load(Ordering::Relaxed)
+   }
 }
