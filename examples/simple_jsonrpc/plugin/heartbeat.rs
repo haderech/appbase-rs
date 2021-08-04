@@ -51,24 +51,18 @@ impl Plugin for HeartbeatPlugin {
       }
 
       let channel = Arc::clone(&self.channel.as_ref().unwrap());
-      HeartbeatPlugin::pulse(channel);
+      appbase_register_async_loop!(
+         self;
+         {
+            channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
+            sleep(Duration::from_secs(1)).await;
+         };
+      );
    }
 
    fn shutdown(&mut self) {
       if !self.plugin_shutdown() {
          return;
       }
-   }
-}
-
-impl HeartbeatPlugin {
-   fn pulse(channel: ChannelHandle) {
-      tokio::spawn(async {
-         channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
-         sleep(Duration::from_secs(1)).await;
-         if !app::is_quiting() {
-            HeartbeatPlugin::pulse(channel);
-         }
-      });
    }
 }

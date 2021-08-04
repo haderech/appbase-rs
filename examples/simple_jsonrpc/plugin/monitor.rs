@@ -36,26 +36,19 @@ impl Plugin for MonitorPlugin {
       }
 
       let monitor = Arc::clone(self.monitor.as_ref().unwrap());
-      MonitorPlugin::watch(monitor);
+      appbase_register_async_loop!(
+         self;
+         {
+            if let Ok(message) = monitor.lock().await.try_recv() {
+               println!("{}", message);
+            }
+         };
+      );
    }
 
    fn shutdown(&mut self) {
       if !self.plugin_shutdown() {
          return;
       }
-   }
-}
-
-impl MonitorPlugin {
-   fn watch(monitor: SubscribeHandle) {
-      tokio::spawn(async move {
-         let mut m1 = monitor.lock().await;
-         if let Ok(message) = m1.try_recv() {
-            println!("{}", message);
-         }
-         if !app::is_quiting() {
-            MonitorPlugin::watch(monitor.clone());
-         }
-      });
    }
 }
