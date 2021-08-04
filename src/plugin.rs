@@ -57,7 +57,7 @@ macro_rules! appbase_plugin_default {
          self.base.state
       }
       fn handle(&mut self) -> Option<JoinHandle<()>> {
-         std::mem::replace(&mut self.base.handle, None)
+         self.base.handle.take()
       }
    };
 }
