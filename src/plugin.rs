@@ -114,7 +114,7 @@ macro_rules! appbase_plugin_requires {
 
 #[macro_export]
 macro_rules! appbase_register_async_single {
-   ($self:ident; $run:block;) => {
+   ($self:ident, $run:block) => {
       $self.base.handle = Some(tokio::spawn( async move {
          $run;
       }));
