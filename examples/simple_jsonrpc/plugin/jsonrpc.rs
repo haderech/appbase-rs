@@ -73,11 +73,11 @@ impl Plugin for JsonRpcPlugin {
 
       let mut s = Some(server);
       appbase_register_async_single!(
-         self;
+         self,
          {
             let server = std::mem::replace(&mut s, None).unwrap();
             server.wait();
-         };
+         }
       );
    }
 

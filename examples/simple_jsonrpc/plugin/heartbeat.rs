@@ -52,11 +52,11 @@ impl Plugin for HeartbeatPlugin {
 
       let channel = Arc::clone(&self.channel.as_ref().unwrap());
       appbase_register_async_loop!(
-         self;
+         self,
          {
             channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
             sleep(Duration::from_secs(1)).await;
-         };
+         }
       );
    }
 

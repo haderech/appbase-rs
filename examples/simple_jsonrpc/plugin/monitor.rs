@@ -37,12 +37,12 @@ impl Plugin for MonitorPlugin {
 
       let monitor = Arc::clone(self.monitor.as_ref().unwrap());
       appbase_register_async_loop!(
-         self;
+         self,
          {
             if let Ok(message) = monitor.lock().await.try_recv() {
                println!("{}", message);
             }
-         };
+         }
       );
    }
 

@@ -56,7 +56,7 @@ macro_rules! appbase_plugin_default {
       fn state(&self) -> PluginState {
          self.base.state
       }
-      fn handle(&mut self) -> Option<JoinHandle<()>> {
+      fn handle(&mut self) -> Option<tokio::task::JoinHandle<()>> {
          self.base.handle.take()
       }
    };
@@ -75,8 +75,6 @@ macro_rules! appbase_plugin_requires_visit {
 #[macro_export]
 macro_rules! appbase_plugin_requires {
    ($name:ty; $($deps:ty),*) => {
-      use tokio::task::JoinHandle;
-
       impl PluginDeps for $name {
          fn plugin_initialize(&mut self) -> bool {
             if self.base.state != PluginState::Registered {
@@ -104,7 +102,6 @@ macro_rules! appbase_plugin_requires {
                return false;
             }
             self.base.state = PluginState::Stopped;
-            $(appbase_plugin_requires_visit!($deps, shutdown);)*
             log::info!("plugin shutdown: {}", <$name>::typename());
             true
          }
@@ -123,7 +120,7 @@ macro_rules! appbase_register_async_single {
 
 #[macro_export]
 macro_rules! appbase_register_async_loop {
-   ($self:ident; $run:block;) => {
+   ($self:ident, $run:block) => {
       $self.base.handle = Some(tokio::spawn( async move {
          loop {
             if app::is_quiting() {
