@@ -57,20 +57,20 @@ impl Application {
    async fn execute(&mut self) {
       //loop {}
       signal::ctrl_c().await.unwrap();
-      self.shutdown();
+      self.shutdown().await;
    }
 
    fn quit(&mut self) {
       self.is_quiting.store(true, Ordering::Relaxed);
    }
 
-   fn shutdown(&mut self) {
+   async fn shutdown(&mut self) {
+      self.quit();
       for plugin in self.running_plugins.iter().rev() {
          if let Ok(mut p1) = plugin.lock() {
-            p1.plugin_shutdown();
+            p1.plugin_shutdown().await;
          }
       }
-      self.quit();
    }
 }
 

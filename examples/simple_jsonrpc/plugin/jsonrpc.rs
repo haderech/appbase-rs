@@ -61,7 +61,7 @@ impl Plugin for JsonRpcPlugin {
       let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
       if let Ok(server) = ServerBuilder::new(io).start_http(&socket) {
          self.server = Some(server.close_handle());
-         tokio::spawn(async {
+         tokio::task::spawn_blocking(|| {
             server.wait();
          });
       }

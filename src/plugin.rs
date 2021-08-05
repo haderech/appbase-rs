@@ -1,6 +1,8 @@
 extern crate mopa;
 
+use async_trait::async_trait;
 use mopa::mopafy;
+use tokio::task::JoinHandle;
 
 pub trait Plugin: mopa::Any + Sync + Send + PluginDeps {
    fn new() -> Self where Self: Sized;
@@ -23,20 +25,23 @@ pub enum PluginState {
 
 pub struct PluginBase {
    pub state: PluginState,
+   pub handle: Option<JoinHandle<()>>,
 }
 
 impl PluginBase {
    pub fn new() -> Self {
       PluginBase {
          state: PluginState::Registered,
+         handle: None,
       }
    }
 }
 
+#[async_trait]
 pub trait PluginDeps {
    fn plugin_initialize(&mut self);
    fn plugin_startup(&mut self);
-   fn plugin_shutdown(&mut self);
+   async fn plugin_shutdown(&mut self);
 }
 
 #[macro_export]
@@ -67,6 +72,7 @@ macro_rules! appbase_plugin_requires_visit {
 #[macro_export]
 macro_rules! appbase_plugin_requires {
    ($name:ty; $($deps:ty),*) => {
+      #[::async_trait::async_trait]
       impl PluginDeps for $name {
          fn plugin_initialize(&mut self) {
             if self.base.state != PluginState::Registered {
@@ -89,14 +95,31 @@ macro_rules! appbase_plugin_requires {
             log::info!("plugin started: {}", <$name>::typename());
          }
 
-         fn plugin_shutdown(&mut self) {
+         async fn plugin_shutdown(&mut self) {
             if self.base.state != PluginState::Started {
                return
             }
             self.base.state = PluginState::Stopped;
+            if let Some(handle) = self.base.handle.take() {
+               let _ = handle.await;
+            }
             self.shutdown();
             log::info!("plugin shutdown: {}", <$name>::typename());
          }
       }
    };
+}
+
+#[macro_export]
+macro_rules! appbase_register_async_loop {
+   ($self:ident, $run:block) => {
+      $self.base.handle = Some(tokio::task::spawn_blocking( move || {
+         loop {
+            if app::is_quiting() {
+               break;
+            }
+            $run;
+         }
+      }));
+   }
 }

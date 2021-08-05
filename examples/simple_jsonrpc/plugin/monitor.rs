@@ -26,16 +26,14 @@ impl Plugin for MonitorPlugin {
 
    fn startup(&mut self) {
       let monitor = self.monitor.as_ref().unwrap().clone();
-      tokio::task::spawn_blocking(move || {
-         loop {
-            if app::is_quiting() {
-               break;
-            }
+      appbase_register_async_loop!(
+         self,
+         {
             if let Ok(message) = monitor.try_lock().unwrap().try_recv() {
                println!("{}", message);
             }
          }
-      });
+      );
    }
 
    fn shutdown(&mut self) {
