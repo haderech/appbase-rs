@@ -2,7 +2,7 @@ extern crate mopa;
 
 use mopa::mopafy;
 
-pub trait Plugin: mopa::Any + Sync + Send {
+pub trait Plugin: mopa::Any + Sync + Send + PluginDeps {
    fn new() -> Self where Self: Sized;
    fn typename() -> String where Self: Sized;
    fn name(&self) -> String;
@@ -33,11 +33,10 @@ impl PluginBase {
    }
 }
 
-// XXX: substitute Result<(),Error> for simple bool return type
 pub trait PluginDeps {
-   fn plugin_initialize(&mut self) -> bool;
-   fn plugin_startup(&mut self) -> bool;
-   fn plugin_shutdown(&mut self) -> bool;
+   fn plugin_initialize(&mut self);
+   fn plugin_startup(&mut self);
+   fn plugin_shutdown(&mut self);
 }
 
 #[macro_export]
@@ -69,34 +68,34 @@ macro_rules! appbase_plugin_requires_visit {
 macro_rules! appbase_plugin_requires {
    ($name:ty; $($deps:ty),*) => {
       impl PluginDeps for $name {
-         fn plugin_initialize(&mut self) -> bool {
+         fn plugin_initialize(&mut self) {
             if self.base.state != PluginState::Registered {
-               return false;
+               return
             }
             self.base.state = PluginState::Initialized;
-            $(appbase_plugin_requires_visit!($deps, initialize);)*
+            $(appbase_plugin_requires_visit!($deps, plugin_initialize);)*
+            self.initialize();
             log::info!("plugin initialized: {}", <$name>::typename());
-            true
          }
 
-         fn plugin_startup(&mut self) -> bool {
+         fn plugin_startup(&mut self) {
             if self.base.state != PluginState::Initialized {
-               return false;
+               return
             }
             self.base.state = PluginState::Started;
-            $(appbase_plugin_requires_visit!($deps, startup);)*
+            $(appbase_plugin_requires_visit!($deps, plugin_startup);)*
+            self.startup();
             app::plugin_started::<$name>();
             log::info!("plugin started: {}", <$name>::typename());
-            true
          }
 
-         fn plugin_shutdown(&mut self) -> bool {
+         fn plugin_shutdown(&mut self) {
             if self.base.state != PluginState::Started {
-               return false;
+               return
             }
             self.base.state = PluginState::Stopped;
+            self.shutdown();
             log::info!("plugin shutdown: {}", <$name>::typename());
-            true
          }
       }
    };

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use appbase::*;
 
 use crate::heartbeat::HeartbeatPlugin;
@@ -23,34 +21,23 @@ impl Plugin for MonitorPlugin {
    }
 
    fn initialize(&mut self) {
-      if !self.plugin_initialize() {
-         return;
-      }
-
-      self.monitor = Some(app::subscribe_channel("message".to_string()));
+      self.monitor.replace(app::subscribe_channel("message".to_string()));
    }
 
    fn startup(&mut self) {
-      if !self.plugin_startup() {
-         return;
+      if let Some(monitor) = &self.monitor {
+         MonitorPlugin::watch(monitor.clone());
       }
-
-      let monitor = Arc::clone(self.monitor.as_ref().unwrap());
-      MonitorPlugin::watch(monitor);
    }
 
    fn shutdown(&mut self) {
-      if !self.plugin_shutdown() {
-         return;
-      }
    }
 }
 
 impl MonitorPlugin {
    fn watch(monitor: SubscribeHandle) {
       tokio::spawn(async move {
-         let mut m1 = monitor.lock().await;
-         if let Ok(message) = m1.try_recv() {
+         if let Ok(message) = monitor.lock().await.try_recv() {
             println!("{}", message);
          }
          if !app::is_quiting() {

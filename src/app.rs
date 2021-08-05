@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::lock::Mutex as FutureMutex;
-use jsonrpc_core::Value;
+use serde_json::value::Value;
 use once_cell::sync::Lazy;
 use tokio::signal;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
@@ -37,7 +37,9 @@ impl Application {
 
    fn initialize(&mut self) {
       for plugin in self.plugins.values() {
-         plugin.lock().unwrap().initialize();
+         if let Ok(mut p1) = plugin.lock() {
+            p1.plugin_initialize();
+         }
       }
    }
 
@@ -46,7 +48,9 @@ impl Application {
          return;
       }
       for plugin in self.plugins.values() {
-         plugin.lock().unwrap().startup();
+         if let Ok(mut p1) = plugin.lock() {
+            p1.plugin_startup();
+         }
       }
    }
 
@@ -62,7 +66,9 @@ impl Application {
 
    fn shutdown(&mut self) {
       for plugin in self.running_plugins.iter().rev() {
-         plugin.lock().unwrap().shutdown();
+         if let Ok(mut p1) = plugin.lock() {
+            p1.plugin_shutdown();
+         }
       }
       self.quit();
    }

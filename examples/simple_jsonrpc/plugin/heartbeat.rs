@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use jsonrpc_core::{Params, Value};
 use tokio::time::{Duration, sleep};
 
@@ -25,39 +23,23 @@ impl Plugin for HeartbeatPlugin {
    }
 
    fn initialize(&mut self) {
-      if !self.plugin_initialize() {
-         return;
+      let channel = app::get_channel("message".to_string());
+      self.channel.replace(channel.clone());
+
+      if let Ok(mut plugin) = app::get_plugin::<JsonRpcPlugin>().lock() {
+         let jsonrpc = plugin.downcast_mut::<JsonRpcPlugin>().unwrap();
+         jsonrpc.add_sync_method("bounce".to_string(), move |_: Params| {
+            channel.lock().unwrap().send(Value::String("Bounce!".to_string())).unwrap();
+            Ok(Value::String("Bounce!".to_string()))
+         });
       }
-
-      self.channel = Some(app::get_channel("message".to_string()));
-      let channel = Arc::clone(&self.channel.as_ref().unwrap());
-
-      let mut _p1 = app::get_plugin::<JsonRpcPlugin>();
-      let mut plugin = _p1.lock().unwrap();
-      let jsonrpc = plugin.downcast_mut::<JsonRpcPlugin>().unwrap();
-      jsonrpc.add_sync_method("bounce".to_string(), move |_: Params| {
-         channel
-            .lock()
-            .unwrap()
-            .send(Value::String("Bounce!".to_string()))
-            .unwrap();
-         Ok(Value::String("Bounce!".to_string()))
-      });
    }
 
    fn startup(&mut self) {
-      if !self.plugin_startup() {
-         return;
-      }
-
-      let channel = Arc::clone(&self.channel.as_ref().unwrap());
-      HeartbeatPlugin::pulse(channel);
+      HeartbeatPlugin::pulse(self.channel.clone().unwrap());
    }
 
    fn shutdown(&mut self) {
-      if !self.plugin_shutdown() {
-         return;
-      }
    }
 }
 
