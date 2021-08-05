@@ -25,24 +25,19 @@ impl Plugin for MonitorPlugin {
    }
 
    fn startup(&mut self) {
-      if let Some(monitor) = &self.monitor {
-         MonitorPlugin::watch(monitor.clone());
-      }
+      let monitor = self.monitor.as_ref().unwrap().clone();
+      tokio::task::spawn_blocking(move || {
+         loop {
+            if app::is_quiting() {
+               break;
+            }
+            if let Ok(message) = monitor.try_lock().unwrap().try_recv() {
+               println!("{}", message);
+            }
+         }
+      });
    }
 
    fn shutdown(&mut self) {
-   }
-}
-
-impl MonitorPlugin {
-   fn watch(monitor: SubscribeHandle) {
-      tokio::spawn(async move {
-         if let Ok(message) = monitor.lock().await.try_recv() {
-            println!("{}", message);
-         }
-         if !app::is_quiting() {
-            MonitorPlugin::watch(monitor.clone());
-         }
-      });
    }
 }
