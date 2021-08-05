@@ -110,18 +110,9 @@ macro_rules! appbase_plugin_requires {
 }
 
 #[macro_export]
-macro_rules! appbase_register_async_single {
-   ($self:ident, $run:block) => {
-      $self.base.handle = Some(tokio::spawn( async move {
-         $run;
-      }));
-   }
-}
-
-#[macro_export]
 macro_rules! appbase_register_async_loop {
    ($self:ident, $run:block) => {
-      $self.base.handle = Some(tokio::spawn( async move {
+      $self.base.handle = Some(tokio::task::spawn_blocking( move || {
          loop {
             if app::is_quiting() {
                break;

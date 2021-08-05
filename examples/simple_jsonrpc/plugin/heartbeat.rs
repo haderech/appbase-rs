@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use jsonrpc_core::{Params, Value};
-use tokio::time::{Duration, sleep};
+use std::thread::sleep;
+use std::time::Duration;
 
 use appbase::*;
 
@@ -55,7 +56,7 @@ impl Plugin for HeartbeatPlugin {
          self,
          {
             channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_secs(1));
          }
       );
    }

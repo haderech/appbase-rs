@@ -71,14 +71,10 @@ impl Plugin for JsonRpcPlugin {
       let server = _server.start_http(&socket).unwrap();
       self.server = Some(server.close_handle());
 
-      let mut s = Some(server);
-      appbase_register_async_single!(
-         self,
-         {
-            let server = std::mem::replace(&mut s, None).unwrap();
-            server.wait();
-         }
-      );
+      tokio::task::spawn_blocking( || {
+         server.wait();
+      });
+
    }
 
    fn shutdown(&mut self) {

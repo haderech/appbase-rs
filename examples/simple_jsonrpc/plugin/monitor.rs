@@ -39,7 +39,7 @@ impl Plugin for MonitorPlugin {
       appbase_register_async_loop!(
          self,
          {
-            if let Ok(message) = monitor.lock().await.try_recv() {
+            if let Ok(message) = monitor.try_lock().unwrap().try_recv() {
                println!("{}", message);
             }
          }
