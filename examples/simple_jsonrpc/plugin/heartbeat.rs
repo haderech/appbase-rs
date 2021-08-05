@@ -1,24 +1,19 @@
 use jsonrpc_core::{Params, Value};
-use std::thread::sleep;
-use std::time::Duration;
+use tokio::time::{Duration, sleep};
 
 use appbase::*;
 
 use crate::jsonrpc::JsonRpcPlugin;
 
 pub struct HeartbeatPlugin {
-   base: PluginBase,
    channel: Option<ChannelHandle>,
 }
 
 appbase_plugin_requires!(HeartbeatPlugin; JsonRpcPlugin);
 
 impl Plugin for HeartbeatPlugin {
-   appbase_plugin_default!(HeartbeatPlugin);
-
    fn new() -> Self {
       HeartbeatPlugin {
-         base: PluginBase::new(),
          channel: None,
       }
    }
@@ -38,15 +33,22 @@ impl Plugin for HeartbeatPlugin {
 
    fn startup(&mut self) {
       let channel = self.channel.as_ref().unwrap().clone();
-      appbase_register_async_loop!(
-         self,
-         {
-            channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
-            sleep(Duration::from_secs(1));
-         }
-      );
+      let app = app::quit_handle().unwrap();
+      HeartbeatPlugin::pulse(channel, app);
    }
 
    fn shutdown(&mut self) {
+   }
+}
+
+impl HeartbeatPlugin {
+   fn pulse(channel: ChannelHandle, app: QuitHandle) {
+      tokio::spawn(async move {
+         channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
+         sleep(Duration::from_secs(1)).await;
+         if !app.is_quiting() {
+            HeartbeatPlugin::pulse(channel, app);
+         }
+      });
    }
 }

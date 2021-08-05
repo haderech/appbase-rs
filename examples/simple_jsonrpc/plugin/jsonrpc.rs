@@ -6,7 +6,6 @@ use jsonrpc_http_server::{CloseHandle, ServerBuilder};
 use appbase::*;
 
 pub struct JsonRpcPlugin {
-   base: PluginBase,
    io: Option<IoHandler>,
    server: Option<CloseHandle>,
 }
@@ -42,11 +41,8 @@ impl JsonRpcPlugin {
 }
 
 impl Plugin for JsonRpcPlugin {
-   appbase_plugin_default!(JsonRpcPlugin);
-
    fn new() -> Self {
       JsonRpcPlugin {
-         base: PluginBase::new(),
          io: None,
          server: None,
       }

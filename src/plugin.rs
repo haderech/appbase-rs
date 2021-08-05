@@ -2,16 +2,12 @@ extern crate mopa;
 
 use async_trait::async_trait;
 use mopa::mopafy;
-use tokio::task::JoinHandle;
 
 pub trait Plugin: mopa::Any + Sync + Send + PluginDeps {
    fn new() -> Self where Self: Sized;
-   fn typename() -> String where Self: Sized;
-   fn name(&self) -> String;
    fn initialize(&mut self);
    fn startup(&mut self);
    fn shutdown(&mut self);
-   fn state(&self) -> PluginState;
 }
 mopafy!(Plugin);
 
@@ -21,20 +17,6 @@ pub enum PluginState {
    Initialized,
    Started,
    Stopped,
-}
-
-pub struct PluginBase {
-   pub state: PluginState,
-   pub handle: Option<JoinHandle<()>>,
-}
-
-impl PluginBase {
-   pub fn new() -> Self {
-      PluginBase {
-         state: PluginState::Registered,
-         handle: None,
-      }
-   }
 }
 
 #[async_trait]
@@ -47,15 +29,6 @@ pub trait PluginDeps {
 #[macro_export]
 macro_rules! appbase_plugin_default {
    ($name:ty) => {
-      fn typename() -> String {
-         stringify!($name).to_string()
-      }
-      fn name(&self) -> String {
-         <$name>::typename()
-      }
-      fn state(&self) -> PluginState {
-         self.base.state
-      }
    };
 }
 
@@ -75,51 +48,27 @@ macro_rules! appbase_plugin_requires {
       #[::async_trait::async_trait]
       impl PluginDeps for $name {
          fn plugin_initialize(&mut self) {
-            if self.base.state != PluginState::Registered {
-               return
+            if !app::plugin_initialized::<$name>() {
+               return;
             }
-            self.base.state = PluginState::Initialized;
             $(appbase_plugin_requires_visit!($deps, plugin_initialize);)*
             self.initialize();
-            log::info!("plugin initialized: {}", <$name>::typename());
+            log::info!("plugin initialized: {}", stringify!($name));
          }
 
          fn plugin_startup(&mut self) {
-            if self.base.state != PluginState::Initialized {
-               return
+            if !app::plugin_started::<$name>() {
+               return;
             }
-            self.base.state = PluginState::Started;
             $(appbase_plugin_requires_visit!($deps, plugin_startup);)*
             self.startup();
-            app::plugin_started::<$name>();
-            log::info!("plugin started: {}", <$name>::typename());
+            log::info!("plugin startup: {}", stringify!($name));
          }
 
          async fn plugin_shutdown(&mut self) {
-            if self.base.state != PluginState::Started {
-               return
-            }
-            self.base.state = PluginState::Stopped;
-            if let Some(handle) = self.base.handle.take() {
-               let _ = handle.await;
-            }
             self.shutdown();
-            log::info!("plugin shutdown: {}", <$name>::typename());
+            log::info!("plugin shutdown: {}", stringify!($name));
          }
       }
    };
-}
-
-#[macro_export]
-macro_rules! appbase_register_async_loop {
-   ($self:ident, $run:block) => {
-      $self.base.handle = Some(tokio::task::spawn_blocking( move || {
-         loop {
-            if app::is_quiting() {
-               break;
-            }
-            $run;
-         }
-      }));
-   }
 }
