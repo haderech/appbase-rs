@@ -34,7 +34,7 @@ impl Plugin for HeartbeatPlugin {
    fn startup(&mut self) {
       let channel = self.channel.as_ref().unwrap().clone();
       let app = app::quit_handle().unwrap();
-      HeartbeatPlugin::pulse(channel, app);
+      Self::pulse(channel, app);
    }
 
    fn shutdown(&mut self) {
@@ -47,7 +47,7 @@ impl HeartbeatPlugin {
          channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
          sleep(Duration::from_secs(1)).await;
          if !app.is_quiting() {
-            HeartbeatPlugin::pulse(channel, app);
+            Self::pulse(channel, app);
          }
       });
    }
