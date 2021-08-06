@@ -45,7 +45,7 @@ macro_rules! appbase_plugin_requires_visit {
 #[macro_export]
 macro_rules! appbase_plugin_requires {
    ($name:ty; $($deps:ty),*) => {
-      #[::async_trait::async_trait]
+      #[::appbase::async_trait]
       impl PluginDeps for $name {
          fn plugin_initialize(&mut self) {
             if !app::plugin_initialized::<$name>() {
