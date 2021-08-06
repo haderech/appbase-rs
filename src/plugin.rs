@@ -27,12 +27,6 @@ pub trait PluginDeps {
 }
 
 #[macro_export]
-macro_rules! appbase_plugin_default {
-   ($name:ty) => {
-   };
-}
-
-#[macro_export]
 macro_rules! appbase_plugin_requires_visit {
    ($name:ty, $method:ident) => {
       let mut _p1 = app::get_plugin::<$name>();
