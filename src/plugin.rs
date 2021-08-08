@@ -21,47 +21,56 @@ pub enum PluginState {
 
 #[async_trait]
 pub trait PluginDeps {
+   fn type_name() -> &'static str where Self: Sized;
+   fn resolve_deps(&mut self);
    fn plugin_initialize(&mut self);
    fn plugin_startup(&mut self);
    async fn plugin_shutdown(&mut self);
 }
 
 #[macro_export]
-macro_rules! appbase_plugin_requires_visit {
+macro_rules! plugin_requires_visit {
    ($name:ty, $method:ident) => {
-      let mut _p1 = app::get_plugin::<$name>();
-      if let Ok(mut plugin) = _p1.try_lock() {
+      if let Ok(mut plugin) = app::get_plugin::<$name>().try_lock() {
         plugin.$method();
       }
    };
 }
 
 #[macro_export]
-macro_rules! appbase_plugin_requires {
+macro_rules! plugin_requires {
    ($name:ty; $($deps:ty),*) => {
       #[::appbase::async_trait]
       impl PluginDeps for $name {
+         fn type_name() -> &'static str {
+            stringify!($name)
+         }
+
+         fn resolve_deps(&mut self) {
+            $(app::register_plugin::<$deps>();)*
+         }
+
          fn plugin_initialize(&mut self) {
-            if !app::plugin_initialized::<$name>() {
+            if app::plugin_initialized::<$name>() {
                return;
             }
-            $(appbase_plugin_requires_visit!($deps, plugin_initialize);)*
+            $(::appbase::plugin_requires_visit!($deps, plugin_initialize);)*
             self.initialize();
-            log::info!("plugin initialized: {}", stringify!($name));
+            log::info!("plugin_initialize");
          }
 
          fn plugin_startup(&mut self) {
-            if !app::plugin_started::<$name>() {
+            if app::plugin_started::<$name>() {
                return;
             }
-            $(appbase_plugin_requires_visit!($deps, plugin_startup);)*
+            $(::appbase::plugin_requires_visit!($deps, plugin_startup);)*
             self.startup();
-            log::info!("plugin startup: {}", stringify!($name));
+            log::info!("plugin_startup");
          }
 
          async fn plugin_shutdown(&mut self) {
             self.shutdown();
-            log::info!("plugin shutdown: {}", stringify!($name));
+            log::info!("plugin_shutdown");
          }
       }
    };

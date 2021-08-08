@@ -3,13 +3,13 @@ use tokio::time::{Duration, sleep};
 
 use appbase::*;
 
-use crate::jsonrpc::JsonRpcPlugin;
+use crate::plugin::jsonrpc::JsonRpcPlugin;
 
 pub struct HeartbeatPlugin {
    channel: Option<ChannelHandle>,
 }
 
-appbase_plugin_requires!(HeartbeatPlugin; JsonRpcPlugin);
+plugin_requires!(HeartbeatPlugin; JsonRpcPlugin);
 
 impl Plugin for HeartbeatPlugin {
    fn new() -> Self {
@@ -43,7 +43,7 @@ impl Plugin for HeartbeatPlugin {
 
 impl HeartbeatPlugin {
    fn pulse(channel: ChannelHandle, app: QuitHandle) {
-      tokio::spawn(async move {
+      app::spawn(async move {
          channel.lock().unwrap().send(Value::String("Alive!".to_string())).unwrap();
          sleep(Duration::from_secs(1)).await;
          if !app.is_quiting() {

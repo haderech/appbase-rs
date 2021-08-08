@@ -11,7 +11,7 @@ pub struct TemplatePlugin {
  * (case 1) Plugin A without any dependencies: `appbase_plugin_requires!(A; );`
  * (case 2) Plugin A depends on Plugin B and C: `appbase_plugin_requires!(A; B, C);`
  */
-appbase_plugin_requires!(TemplatePlugin; );
+plugin_requires!(TemplatePlugin; );
 
 /*
  * Plugin impl MAY have plugin-specific methods.

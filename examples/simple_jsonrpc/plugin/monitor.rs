@@ -1,13 +1,13 @@
 use appbase::*;
 
-use crate::heartbeat::HeartbeatPlugin;
-use crate::jsonrpc::JsonRpcPlugin;
+use crate::plugin::heartbeat::HeartbeatPlugin;
+use crate::plugin::jsonrpc::JsonRpcPlugin;
 
 pub struct MonitorPlugin {
    monitor: Option<SubscribeHandle>,
 }
 
-appbase_plugin_requires!(MonitorPlugin; HeartbeatPlugin, JsonRpcPlugin);
+plugin_requires!(MonitorPlugin; HeartbeatPlugin, JsonRpcPlugin);
 
 impl Plugin for MonitorPlugin {
    fn new() -> Self {
@@ -23,7 +23,7 @@ impl Plugin for MonitorPlugin {
    fn startup(&mut self) {
       let monitor = self.monitor.as_ref().unwrap().clone();
       let app = app::quit_handle().unwrap();
-      tokio::task::spawn_blocking(move || {
+      app::spawn_blocking(move || {
          loop {
             if app.is_quiting() {
                break;

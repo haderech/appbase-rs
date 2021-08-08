@@ -10,7 +10,7 @@ pub struct JsonRpcPlugin {
    server: Option<CloseHandle>,
 }
 
-appbase_plugin_requires!(JsonRpcPlugin; );
+plugin_requires!(JsonRpcPlugin; );
 
 /*
  * `add_sync_method` and `add_method` SHOULD be called during plugin initialization.
@@ -18,10 +18,7 @@ appbase_plugin_requires!(JsonRpcPlugin; );
  */
 impl JsonRpcPlugin {
    #[allow(dead_code)]
-   pub fn add_sync_method<F>(&mut self, name: String, func: F)
-      where
-         F: RpcMethodSync,
-   {
+   pub fn add_sync_method<F>(&mut self, name: String, func: F) where F: RpcMethodSync {
       match self.io.as_mut() {
          Some(io) => io.add_sync_method(name.as_str(), func),
          None => log::error!("add method not available"),
@@ -29,10 +26,7 @@ impl JsonRpcPlugin {
    }
 
    #[allow(dead_code)]
-   pub fn add_method<F>(&mut self, name: String, func: F)
-      where
-         F: RpcMethodSimple,
-   {
+   pub fn add_method<F>(&mut self, name: String, func: F) where F: RpcMethodSimple {
       match self.io.as_mut() {
          Some(io) => io.add_method(name.as_str(), func),
          None => log::error!("add method not available"),
@@ -57,7 +51,7 @@ impl Plugin for JsonRpcPlugin {
       let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
       if let Ok(server) = ServerBuilder::new(io).start_http(&socket) {
          self.server = Some(server.close_handle());
-         tokio::task::spawn_blocking(|| {
+         app::spawn_blocking(|| {
             server.wait();
          });
       }

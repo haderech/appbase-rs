@@ -1,14 +1,13 @@
 mod plugin;
 
 use appbase::app;
-use plugin::*;
 use env_logger;
+use plugin::monitor::MonitorPlugin;
 
-#[tokio::main]
-async fn main() {
+fn main() {
    env_logger::init();
-   app::register_plugin::<monitor::MonitorPlugin>();
-   app::initialize();
+   app::register_plugin::<MonitorPlugin>();
+   app::initialize!(MonitorPlugin);
    app::startup();
-   app::execute().await; // XXX: a better way for graceful shutdown?
+   app::execute();
 }
