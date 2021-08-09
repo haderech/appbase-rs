@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::Read;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -317,6 +318,28 @@ pub fn arg(arg: clap::Arg<'static>) {
       } else {
          log::error!("once options being parsed, cannot set more");
       }
+   }
+}
+
+pub fn is_present(opt: &str) -> bool {
+   unsafe {
+      if let None = APP.parsed_options {
+         APP.parsed_options.replace(APP.options.take().unwrap().get_matches());
+      }
+      if APP.parsed_options.as_ref().unwrap().is_present(opt) {
+         return true;
+      }
+      if APP.toml.is_some() {
+         let mut opts = opt.split("::");
+         let namespace = opts.next().unwrap();
+         let key = opts.next().unwrap();
+         if let Some(table) = APP.toml.as_ref().unwrap().as_table().unwrap().get(namespace) {
+            if let Some(item) = table.as_table().unwrap().get(key) {
+               return bool::from_str(item.as_str().unwrap()).unwrap();
+            }
+         }
+      }
+      false
    }
 }
 
