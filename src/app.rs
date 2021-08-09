@@ -183,13 +183,13 @@ pub fn initialize_plugin<P>() where P: PluginImpl {
 macro_rules! initialize {
    ($($plugin:ty),*) => {
       ::appbase::app::load_toml();
-      $(::appbase::app::initialize_plugin::<$plugin>();)*
       if let Some(mut plugins) = ::appbase::app::values_of("app::plugin") {
          let mut iter = plugins.iter();
          while let Some(plugin) = iter.next() {
             ::appbase::app::find_plugin(plugin).unwrap().lock().unwrap().plugin_initialize();
          }
       }
+      $(::appbase::app::initialize_plugin::<$plugin>();)*
    };
 }
 pub use initialize;
