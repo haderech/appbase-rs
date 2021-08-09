@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::Read;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -335,7 +334,7 @@ pub fn is_present(opt: &str) -> bool {
          let key = opts.next().unwrap();
          if let Some(table) = APP.toml.as_ref().unwrap().as_table().unwrap().get(namespace) {
             if let Some(item) = table.as_table().unwrap().get(key) {
-               return bool::from_str(item.as_str().unwrap()).unwrap();
+               return item.as_bool().unwrap();
             }
          }
       }
@@ -398,3 +397,4 @@ pub fn load_toml() {
       }
    }
 }
+
