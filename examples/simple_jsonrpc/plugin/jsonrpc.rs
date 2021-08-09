@@ -1,5 +1,7 @@
+use std::str::FromStr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use clap::Arg;
 use jsonrpc_core::{IoHandler, RpcMethodSimple, RpcMethodSync};
 use jsonrpc_http_server::{CloseHandle, ServerBuilder};
 
@@ -36,6 +38,8 @@ impl JsonRpcPlugin {
 
 impl Plugin for JsonRpcPlugin {
    fn new() -> Self {
+      app::arg(Arg::new("jsonrpc::host").long("jsonrpc-host").takes_value(true));
+      app::arg(Arg::new("jsonrpc::port").long("jsonrpc-port").takes_value(true));
       JsonRpcPlugin {
          io: None,
          server: None,
@@ -47,8 +51,10 @@ impl Plugin for JsonRpcPlugin {
    }
 
    fn startup(&mut self) {
+      let host = app::value_of("jsonrpc::host").unwrap_or("127.0.0.1");
+      let port = u16::from_str(&app::value_of("jsonrpc::port").unwrap_or("8080")).unwrap();
       let io = self.io.take().unwrap();
-      let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+      let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::from_str(&host).unwrap()), port);
       if let Ok(server) = ServerBuilder::new(io).start_http(&socket) {
          self.server = Some(server.close_handle());
          app::spawn_blocking(|| {

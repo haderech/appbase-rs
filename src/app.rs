@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::env;
 use std::future::Future;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -50,6 +52,9 @@ struct Application {
    is_quiting: Arc<AtomicBool>,
    quit_tx: Option<watch::Sender<bool>>,
    quit_rx: Option<watch::Receiver<bool>>,
+   options: Option<clap::App<'static>>,
+   parsed_options: Option<clap::ArgMatches>,
+   toml: Option<toml::Value>,
 }
 
 struct Plugin {
@@ -69,7 +74,7 @@ impl Plugin {
 impl Application {
    fn new() -> Application {
       let (tx, rx) = watch::channel(false);
-      Application {
+      let mut app = Application {
          runtime: Arc::new(Builder::new_multi_thread().enable_all().build().unwrap()),
          plugins: HashMap::new(),
          running_plugins: Vec::new(),
@@ -77,7 +82,16 @@ impl Application {
          is_quiting: Arc::new(AtomicBool::new(false)),
          quit_tx: Some(tx),
          quit_rx: Some(rx),
-      }
+         options: None,
+         parsed_options: None,
+         toml: None,
+      };
+      let args = env::args().collect::<Vec<String>>();
+      let bin = std::path::Path::new(&args[0]).file_stem().unwrap().to_str().unwrap();
+      let options = clap::App::new(bin)
+         .arg(clap::Arg::new("app::plugin").long("plugin").takes_value(true).multiple_occurrences(true));
+      app.options.replace(options);
+      app
    }
 
    fn initialize<P>(&mut self) where P: PluginImpl {
@@ -168,7 +182,14 @@ pub fn initialize_plugin<P>() where P: PluginImpl {
 #[macro_export]
 macro_rules! initialize {
    ($($plugin:ty),*) => {
+      ::appbase::app::load_toml();
       $(::appbase::app::initialize_plugin::<$plugin>();)*
+      if let Some(mut plugins) = ::appbase::app::values_of("app::plugin") {
+         let mut iter = plugins.iter();
+         while let Some(plugin) = iter.next() {
+            ::appbase::app::find_plugin(plugin).unwrap().lock().unwrap().plugin_initialize();
+         }
+      }
    };
 }
 pub use initialize;
@@ -287,4 +308,70 @@ pub fn plugin_state<P>() -> Option<plugin::State> where P: PluginImpl {
       }
    }
    None
+}
+
+pub fn arg(arg: clap::Arg<'static>) {
+   unsafe {
+      if APP.options.is_some() {
+         APP.options = Some(APP.options.take().unwrap().arg(arg));
+      } else {
+         log::error!("once options being parsed, cannot set more");
+      }
+   }
+}
+
+pub fn value_of(opt: &str) -> Option<&'static str> {
+   unsafe {
+      if let None = APP.parsed_options {
+         APP.parsed_options.replace(APP.options.take().unwrap().get_matches());
+      }
+      if let Some(value) = APP.parsed_options.as_ref().unwrap().value_of(opt) {
+         return Some(value);
+      }
+      if APP.toml.is_some() {
+         let mut opts = opt.split("::");
+         let namespace = opts.next().unwrap();
+         let key = opts.next().unwrap();
+         if let Some(table) = APP.toml.as_ref().unwrap().as_table().unwrap().get(namespace) {
+            if let Some(item) = table.as_table().unwrap().get(key) {
+               return item.as_str();
+            }
+         }
+      }
+      None
+   }
+}
+
+pub fn values_of(opt: &str) -> Option<Vec<&str>> {
+   unsafe {
+      if let None = APP.parsed_options {
+         APP.parsed_options.replace(APP.options.take().unwrap().get_matches());
+      }
+      if let Some(values) = APP.parsed_options.as_ref().unwrap().values_of(opt) {
+         return Some(values.collect());
+      }
+      if APP.toml.is_some() {
+         let mut opts = opt.split("::");
+         let namespace = opts.next().unwrap();
+         let key = opts.next().unwrap();
+         if let Some(table) = APP.toml.as_ref().unwrap().as_table().unwrap().get(namespace) {
+            if let Some(item) = table.as_table().unwrap().get(key) {
+               return Some(item.as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect());
+            }
+         }
+      }
+      None
+   }
+}
+
+pub fn load_toml() {
+   let path = std::path::Path::new("config.toml");
+   if path.exists() {
+      let mut file = std::fs::File::open(path).unwrap();
+      let mut data = String::new();
+      let _ = file.read_to_string(&mut data);
+      unsafe {
+         APP.toml.replace(data.parse::<toml::Value>().unwrap());
+      }
+   }
 }
