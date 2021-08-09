@@ -6,49 +6,62 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use once_cell::sync::Lazy;
 use serde_json::value::Value;
 use tokio::runtime::{Builder, Runtime};
-use tokio::sync::{broadcast, Mutex as FutureMutex, watch};
+use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
-use crate::plugin::{Plugin as PluginImpl, PluginState};
+use crate::plugin;
+use crate::plugin::Plugin as PluginImpl;
+
+pub mod channel {
+   use super::*;
+   pub type Sender = broadcast::Sender<Value>;
+   pub type Receiver = broadcast::Receiver<Value>;
+}
+
+pub type PluginHandle = Arc<Mutex<dyn PluginImpl>>;
+
+pub struct QuitHandle {
+   handle: Option<watch::Receiver<bool>>,
+}
+
+impl QuitHandle {
+   pub fn is_quiting(&self) -> bool {
+      let handle = self.handle.as_ref();
+      match handle {
+         Some(handle) => *handle.borrow(),
+         None => true,
+      }
+   }
+   pub fn quit(&mut self) {
+      quit();
+      self.handle.take();
+   }
+}
 
 static mut APP: Lazy<Application> = Lazy::new(|| {
    Application::new()
 });
 
-pub type PluginHandle = Arc<Mutex<dyn PluginImpl>>;
-pub type ChannelHandle = Arc<Mutex<broadcast::Sender<Value>>>;
-pub type SubscribeHandle = Arc<FutureMutex<broadcast::Receiver<Value>>>;
-
-pub struct QuitHandle {
-   handle: watch::Receiver<bool>,
-}
-
-impl QuitHandle {
-   pub fn is_quiting(&self) -> bool {
-      *self.handle.borrow()
-   }
-}
-
 struct Application {
    runtime: Arc<Runtime>,
    plugins: HashMap<String, Plugin>,
    running_plugins: Vec<String>,
-   channels: HashMap<String, ChannelHandle>,
-   is_quiting: AtomicBool,
+   channels: HashMap<String, channel::Sender>,
+   is_quiting: Arc<AtomicBool>,
    quit_tx: Option<watch::Sender<bool>>,
    quit_rx: Option<watch::Receiver<bool>>,
 }
 
 struct Plugin {
    instance: PluginHandle,
-   state: PluginState,
+   state: plugin::State,
 }
 
 impl Plugin {
    fn new<P>() -> Plugin where P: PluginImpl {
       Plugin {
          instance: Arc::new(Mutex::new(P::new())),
-         state: PluginState::Registered,
+         state: plugin::State::Registered,
       }
    }
 }
@@ -61,7 +74,7 @@ impl Application {
          plugins: HashMap::new(),
          running_plugins: Vec::new(),
          channels: HashMap::new(),
-         is_quiting: AtomicBool::new(false),
+         is_quiting: Arc::new(AtomicBool::new(false)),
          quit_tx: Some(tx),
          quit_rx: Some(rx),
       }
@@ -80,7 +93,7 @@ impl Application {
          return;
       }
       for plugin in self.plugins.values_mut() {
-         if plugin.state != PluginState::Initialized {
+         if plugin.state != plugin::State::Initialized {
             continue;
          }
          if let Ok(mut p1) = plugin.instance.lock() {
@@ -93,33 +106,53 @@ impl Application {
       self.runtime.block_on(async {
          let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).unwrap();
          let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+
+         let is_quiting = self.is_quiting.clone();
+         let quit = tokio::task::spawn_blocking(move || {
+            loop {
+               if is_quiting.load(Ordering::Relaxed) {
+                  break;
+               }
+            }
+         });
          tokio::select! {
             _ = sigint.recv() => {},
             _ = sigterm.recv() => {},
+            _ = quit => {},
          }
       });
       self.shutdown();
    }
 
    fn quit(&mut self) {
-      let _ = self.quit_tx.as_ref().unwrap().send(true);
-      self.quit_rx.take();
-      self.is_quiting.store(true, Ordering::Relaxed);
+      let quit_tx = self.quit_tx.as_ref();
+      match quit_tx {
+         Some(quit_tx) => {
+            let _ = quit_tx.send(true);
+            self.quit_rx.take();
+            self.is_quiting.store(true, Ordering::Relaxed);
+         },
+         None => {
+            log::warn!("app is already quiting");
+         },
+      }
    }
 
    fn shutdown(&mut self) {
       self.quit();
       let quit_tx = self.quit_tx.take().unwrap();
       self.runtime.clone().block_on(async {
+         log::info!("try graceful shutdown...");
+         // wait until all `quit_handle`s are dropped
          quit_tx.closed().await;
          for typeid in self.running_plugins.iter().rev() {
             let plugin = self.plugins.get_mut(typeid).unwrap();
             if let Ok(mut p1) = plugin.instance.lock() {
-               if plugin.state != PluginState::Started {
+               if plugin.state != plugin::State::Started {
                   continue;
                }
-               plugin.state = PluginState::Stopped;
-               p1.plugin_shutdown().await;
+               plugin.state = plugin::State::Stopped;
+               p1.plugin_shutdown();
             }
          }
       });
@@ -138,7 +171,6 @@ macro_rules! initialize {
       $(::appbase::app::initialize_plugin::<$plugin>();)*
    };
 }
-
 pub use initialize;
 
 pub fn startup() {
@@ -162,8 +194,8 @@ pub fn quit() {
 pub fn plugin_initialized<P>() -> bool where P: PluginImpl {
    unsafe {
       if let Some(plugin) = APP.plugins.get_mut(P::type_name()) {
-         if plugin.state == PluginState::Registered {
-            plugin.state = PluginState::Initialized;
+         if plugin.state == plugin::State::Registered {
+            plugin.state = plugin::State::Initialized;
             return false;
          }
       }
@@ -175,8 +207,8 @@ pub fn plugin_started<P>() -> bool where P: PluginImpl {
    unsafe {
       let type_name = P::type_name();
       if let Some(plugin) = APP.plugins.get_mut(type_name) {
-         if plugin.state == PluginState::Initialized {
-            plugin.state = PluginState::Started;
+         if plugin.state == plugin::State::Initialized {
+            plugin.state = plugin::State::Started;
             APP.running_plugins.push(type_name.to_string());
             return false;
          }
@@ -208,36 +240,31 @@ pub fn find_plugin(type_name: &str) -> Option<PluginHandle> {
    }
 }
 
-pub fn get_channel(name: String) -> ChannelHandle {
+pub fn get_channel(name: String) -> channel::Sender {
    unsafe {
       match APP.channels.get(name.as_str()) {
          Some(channel) => channel.clone(),
          None => {
-            let (tx, _) = broadcast::channel(16);
-            let _name = name.clone();
-            APP.channels.insert(_name, Arc::new(Mutex::new(tx)));
+            let (tx, _) = broadcast::channel(32);
+            APP.channels.insert(name.clone(), tx);
             APP.channels.get(name.as_str()).unwrap().clone()
          }
       }
    }
 }
 
-pub fn subscribe_channel(name: String) -> SubscribeHandle {
-   Arc::new(FutureMutex::new(get_channel(name).lock().unwrap().subscribe()))
+pub fn subscribe_channel(name: String) -> channel::Receiver {
+   get_channel(name).subscribe()
 }
 
 pub fn quit_handle() -> Option<QuitHandle> {
    unsafe {
       if let Some(rx) = APP.quit_rx.as_ref() {
-         return Some(QuitHandle{ handle: rx.clone() });
+         return Some(QuitHandle{
+            handle: Some(rx.clone()),
+         });
       }
       None
-   }
-}
-
-pub fn block_on<F: Future<Output=()>>(future: F) -> F::Output {
-   unsafe {
-      APP.runtime.block_on(future);
    }
 }
 
@@ -251,4 +278,13 @@ pub fn spawn_blocking<F, R>(func: F) -> JoinHandle<R> where F: FnOnce() -> R + S
    unsafe {
       APP.runtime.spawn_blocking(func)
    }
+}
+
+pub fn plugin_state<P>() -> Option<plugin::State> where P: PluginImpl {
+   unsafe {
+      if let Some(plugin) = APP.plugins.get(P::type_name()) {
+         return Some(plugin.state);
+      }
+   }
+   None
 }

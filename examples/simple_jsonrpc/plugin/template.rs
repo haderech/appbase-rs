@@ -7,11 +7,11 @@ pub struct TemplatePlugin {
 }
 
 /*
- * Plugin SHOULD have `appbase_plugin_requires!` macro including dependencies.
- * (case 1) Plugin A without any dependencies: `appbase_plugin_requires!(A; );`
- * (case 2) Plugin A depends on Plugin B and C: `appbase_plugin_requires!(A; B, C);`
+ * Plugin SHOULD have `plugin::requires!` macro including dependencies.
+ * (case 1) Plugin A without any dependencies: `plugin::requires!(A; );`
+ * (case 2) Plugin A depends on Plugin B and C: `plugin::requires!(A; B, C);`
  */
-plugin_requires!(TemplatePlugin; );
+plugin::requires!(TemplatePlugin; );
 
 /*
  * Plugin impl MAY have plugin-specific methods.

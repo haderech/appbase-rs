@@ -4,10 +4,10 @@ use crate::plugin::heartbeat::HeartbeatPlugin;
 use crate::plugin::jsonrpc::JsonRpcPlugin;
 
 pub struct MonitorPlugin {
-   monitor: Option<SubscribeHandle>,
+   monitor: Option<channel::Receiver>,
 }
 
-plugin_requires!(MonitorPlugin; HeartbeatPlugin, JsonRpcPlugin);
+plugin::requires!(MonitorPlugin; HeartbeatPlugin, JsonRpcPlugin);
 
 impl Plugin for MonitorPlugin {
    fn new() -> Self {
@@ -21,14 +21,14 @@ impl Plugin for MonitorPlugin {
    }
 
    fn startup(&mut self) {
-      let monitor = self.monitor.as_ref().unwrap().clone();
+      let mut monitor = self.monitor.take().unwrap();
       let app = app::quit_handle().unwrap();
       app::spawn_blocking(move || {
          loop {
             if app.is_quiting() {
                break;
             }
-            if let Ok(message) = monitor.try_lock().unwrap().try_recv() {
+            if let Ok(message) = monitor.try_recv() {
                println!("{}", message);
             }
          }
