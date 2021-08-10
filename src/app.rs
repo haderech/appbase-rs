@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::env;
 use std::future::Future;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -86,9 +86,8 @@ impl Application {
          parsed_options: None,
          toml: None,
       };
-      let args = env::args().collect::<Vec<String>>();
-      let bin = std::path::Path::new(&args[0]).file_stem().unwrap().to_str().unwrap();
-      let options = clap::App::new(bin)
+      let options = clap::App::new(current_exe().as_str())
+         .arg(clap::Arg::new("config-dir").long("config-dir").takes_value(true))
          .arg(clap::Arg::new("app::plugin").long("plugin").takes_value(true).multiple_occurrences(true));
       app.options.replace(options);
       app
@@ -182,7 +181,7 @@ pub fn initialize_plugin<P>() where P: PluginImpl {
 #[macro_export]
 macro_rules! initialize {
    ($($plugin:ty),*) => {
-      ::appbase::app::load_toml();
+      ::appbase::app::load_config();
       if let Some(mut plugins) = ::appbase::app::values_of("app::plugin") {
          let mut iter = plugins.iter();
          while let Some(plugin) = iter.next() {
@@ -364,6 +363,30 @@ pub fn value_of(opt: &str) -> Option<&'static str> {
    }
 }
 
+pub fn value_of_t<T>(opt: &str) -> Option<T> where T: std::str::FromStr + serde::Deserialize<'static>, <T as std::str::FromStr>::Err: std::fmt::Display {
+   unsafe {
+      if let None = APP.parsed_options {
+         APP.parsed_options.replace(APP.options.take().unwrap().get_matches());
+      }
+      if let Ok(value) = APP.parsed_options.as_ref().unwrap().value_of_t::<T>(opt) {
+         return Some(value);
+      }
+      if APP.toml.is_some() {
+         let mut opts = opt.split("::");
+         let namespace = opts.next().unwrap();
+         let key = opts.next().unwrap();
+         if let Some(table) = APP.toml.as_ref().unwrap().as_table().unwrap().get(namespace) {
+            if let Some(item) = table.as_table().unwrap().get(key) {
+               if let Ok(item) = item.clone().try_into::<T>() {
+                  return Some(item);
+               }
+            }
+         }
+      }
+      None
+   }
+}
+
 pub fn values_of(opt: &str) -> Option<Vec<&str>> {
    unsafe {
       if let None = APP.parsed_options {
@@ -386,15 +409,25 @@ pub fn values_of(opt: &str) -> Option<Vec<&str>> {
    }
 }
 
-pub fn load_toml() {
-   let path = std::path::Path::new("config.toml");
-   if path.exists() {
-      let mut file = std::fs::File::open(path).unwrap();
+pub fn load_config() {
+   let mut pathbuf: PathBuf;
+   if let Some(config_dir) = value_of("config-dir") {
+      pathbuf = Path::new(config_dir).join(Path::new("config.toml"));
+   } else {
+      pathbuf = directories::BaseDirs::new().unwrap().config_dir().join(Path::new(current_exe().as_str()));
+      pathbuf.push(Path::new("config/config.toml"));
+   }
+   if pathbuf.as_path().exists() {
+      let mut file = std::fs::File::open(pathbuf.as_path()).unwrap();
       let mut data = String::new();
       let _ = file.read_to_string(&mut data);
       unsafe {
          APP.toml.replace(data.parse::<toml::Value>().unwrap());
       }
    }
+}
+
+fn current_exe() -> String {
+   String::from(std::env::current_exe().unwrap().file_stem().unwrap().to_str().unwrap())
 }
 
