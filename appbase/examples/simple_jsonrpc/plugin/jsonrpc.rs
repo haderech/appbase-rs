@@ -5,14 +5,13 @@ use clap::Arg;
 use jsonrpc_core::{IoHandler, RpcMethodSimple, RpcMethodSync};
 use jsonrpc_http_server::{CloseHandle, ServerBuilder};
 
-use appbase::*;
+use appbase::prelude::*;
 
+#[appbase_plugin]
 pub struct JsonRpcPlugin {
    io: Option<IoHandler>,
    server: Option<CloseHandle>,
 }
-
-plugin::requires!(JsonRpcPlugin; );
 
 /*
  * `add_sync_method` and `add_method` SHOULD be called during plugin initialization.
@@ -38,26 +37,26 @@ impl JsonRpcPlugin {
 
 impl Plugin for JsonRpcPlugin {
    fn new() -> Self {
-      app::arg(Arg::new("jsonrpc::host").long("jsonrpc-host").takes_value(true));
-      app::arg(Arg::new("jsonrpc::port").long("jsonrpc-port").takes_value(true));
+      APP.options.arg(Arg::new("jsonrpc::host").long("jsonrpc-host").takes_value(true));
+      APP.options.arg(Arg::new("jsonrpc::port").long("jsonrpc-port").takes_value(true));
       JsonRpcPlugin {
          io: None,
          server: None,
       }
    }
 
-   fn initialize(&mut self) {
+   fn init(&mut self) {
       self.io = Some(IoHandler::new());
    }
 
    fn startup(&mut self) {
-      let host = app::value_of("jsonrpc::host").unwrap_or("127.0.0.1");
-      let port = app::value_of_t::<u16>("jsonrpc::port").unwrap_or(8080);
+      let host = APP.options.value_of("jsonrpc::host").unwrap_or(String::from("127.0.0.1"));
+      let port = APP.options.value_of_t::<u16>("jsonrpc::port").unwrap_or(8080);
       let io = self.io.take().unwrap();
       let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::from_str(&host).unwrap()), port);
       if let Ok(server) = ServerBuilder::new(io).start_http(&socket) {
          self.server = Some(server.close_handle());
-         app::spawn_blocking(|| {
+         std::thread::spawn(move || {
             server.wait();
          });
       }

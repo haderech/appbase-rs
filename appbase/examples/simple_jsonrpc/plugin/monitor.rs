@@ -1,13 +1,12 @@
-use appbase::*;
+use appbase::prelude::*;
 
 use crate::plugin::heartbeat::HeartbeatPlugin;
 use crate::plugin::jsonrpc::JsonRpcPlugin;
 
+#[appbase_plugin(HeartbeatPlugin, JsonRpcPlugin)]
 pub struct MonitorPlugin {
-   monitor: Option<channel::Receiver>,
+   monitor: Option<Receiver>,
 }
-
-plugin::requires!(MonitorPlugin; HeartbeatPlugin, JsonRpcPlugin);
 
 impl Plugin for MonitorPlugin {
    fn new() -> Self {
@@ -16,14 +15,14 @@ impl Plugin for MonitorPlugin {
       }
    }
 
-   fn initialize(&mut self) {
-      self.monitor.replace(app::subscribe_channel("message".to_string()));
+   fn init(&mut self) {
+      self.monitor.replace(APP.channels.subscribe("message"));
    }
 
    fn startup(&mut self) {
       let mut monitor = self.monitor.take().unwrap();
-      let app = app::quit_handle().unwrap();
-      app::spawn_blocking(move || {
+      let app = APP.quit_handle().unwrap();
+      std::thread::spawn(move || {
          loop {
             if app.is_quiting() {
                break;
@@ -33,8 +32,5 @@ impl Plugin for MonitorPlugin {
             }
          }
       });
-   }
-
-   fn shutdown(&mut self) {
    }
 }

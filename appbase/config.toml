@@ -1,0 +1,5 @@
+[app]
+plugin = ["MonitorPlugin"]
+
+[jsonrpc]
+port = 3000
