@@ -24,7 +24,7 @@ impl Plugin for MonitorPlugin {
       let app = APP.quit_handle().unwrap();
       std::thread::spawn(move || {
          loop {
-            if app.is_quiting() {
+            if app.is_quitting() {
                break;
             }
             if let Ok(message) = monitor.try_recv() {

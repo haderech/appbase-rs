@@ -11,8 +11,8 @@ use options::Options;
 use crate::plugin::{Plugin, State};
 use crate::util::current_exe;
 
-mod options;
-mod channels;
+pub mod options;
+pub mod channels;
 
 pub static APP: Lazy<App> = Lazy::new(|| {
    App::new()
@@ -193,7 +193,7 @@ impl App {
       let is_quitting = self.is_quitting.try_read().unwrap();
       if is_quitting.is_some() && !is_quitting.as_ref().unwrap().load(Ordering::Relaxed) {
          return Some(QuitHandle {
-            is_quitting: is_quitting.as_ref().unwrap().clone(),
+            is_quitting: Some(is_quitting.as_ref().unwrap().clone()),
          });
       }
       None
@@ -201,14 +201,25 @@ impl App {
 }
 
 pub struct QuitHandle {
-   is_quitting: Arc<AtomicBool>,
+   is_quitting: Option<Arc<AtomicBool>>,
 }
 
 impl QuitHandle {
-   pub fn is_quiting(&self) -> bool {
-      self.is_quitting.load(Ordering::Relaxed)
+   pub fn is_quitting(&self) -> bool {
+      match self.is_quitting.as_ref() {
+         Some(is_quitting) => is_quitting.load(Ordering::Relaxed),
+         None => true,
+      }
    }
    pub fn quit(&mut self) {
-      self.is_quitting.store(true, Ordering::Relaxed)
+      if let Some(is_quitting) = self.is_quitting.as_ref() {
+         is_quitting.store(true, Ordering::Relaxed)
+      }
+   }
+}
+
+impl Drop for QuitHandle {
+   fn drop(&mut self) {
+      self.is_quitting.take();
    }
 }

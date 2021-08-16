@@ -41,7 +41,7 @@ impl HeartbeatPlugin {
       APP.spawn(async move {
          channel.send(Value::String("Alive!".to_string())).unwrap();
          sleep(Duration::from_secs(1)).await;
-         if !app.is_quiting() {
+         if !app.is_quitting() {
             Self::pulse(channel, app);
          }
       });

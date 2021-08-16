@@ -9,7 +9,7 @@ pub struct Options {
 }
 
 impl Options {
-   pub fn new(s: &str) -> Self {
+   pub(super) fn new(s: &str) -> Self {
       Options {
          app: Mutex::new(Some(clap::App::new(s)
             .arg(clap::Arg::new("config-dir").long("config-dir").takes_value(true))

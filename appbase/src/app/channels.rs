@@ -12,7 +12,7 @@ pub struct Channels {
 }
 
 impl Channels {
-   pub fn new() -> Self {
+   pub(super) fn new() -> Self {
       Channels {
          map: RwLock::new(HashMap::new()),
       }
