@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -9,12 +10,14 @@ pub type Receiver = broadcast::Receiver<Value>;
 
 pub struct Channels {
    map: RwLock<HashMap<String, Sender>>,
+   capacity: AtomicUsize,
 }
 
 impl Channels {
    pub(super) fn new() -> Self {
       Channels {
          map: RwLock::new(HashMap::new()),
+         capacity: AtomicUsize::new(32),
       }
    }
 
@@ -26,12 +29,16 @@ impl Channels {
          }
       }
       let mut map = self.map.try_write().unwrap();
-      let (tx, _) = broadcast::channel(32);
+      let (tx, _) = broadcast::channel(self.capacity.load(Ordering::Relaxed));
       map.insert(String::from(ch), tx);
       map.get(ch).unwrap().clone()
    }
 
    pub fn subscribe(&self, ch: &str) -> Receiver {
       self.get(ch).subscribe()
+   }
+
+   pub fn set_capacity(&self, capacity: usize) {
+      self.capacity.store(capacity, Ordering::Relaxed);
    }
 }

@@ -13,7 +13,8 @@ impl Options {
       Options {
          app: Mutex::new(Some(clap::App::new(s)
             .arg(clap::Arg::new("config-dir").long("config-dir").takes_value(true))
-            .arg(clap::Arg::new("app::plugin").long("plugin").takes_value(true).multiple_occurrences(true)))),
+            .arg(clap::Arg::new("app::plugin").long("plugin").takes_value(true).multiple_occurrences(true))
+            .arg(clap::Arg::new("app::channel-capacity").long("channel-capacity").takes_value(true)))),
          parsed: RwLock::new(None),
          toml: RwLock::new(None),
       }

@@ -92,6 +92,9 @@ impl App {
             self._plugin_init(&name);
          }
       }
+      if let Some(capacity) = self.options.value_of_t::<usize>("app::channel-capacity") {
+         self.channels.set_capacity(capacity);
+      }
    }
 
    pub fn startup(&self) {
