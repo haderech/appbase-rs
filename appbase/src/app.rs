@@ -87,13 +87,13 @@ impl App {
 
    pub fn init(&self) {
       self.options.parse();
+      if let Some(capacity) = self.options.value_of_t::<usize>("app::channel-capacity") {
+         self.channels.set_capacity(capacity);
+      }
       if let Some(names) = self.options.values_of("app::plugin") {
          for name in names {
             self._plugin_init(&name);
          }
-      }
-      if let Some(capacity) = self.options.value_of_t::<usize>("app::channel-capacity") {
-         self.channels.set_capacity(capacity);
       }
    }
 
