@@ -21,7 +21,7 @@ pub static APP: Lazy<App> = Lazy::new(|| {
 pub type Plugins = HashMap<String, Mutex<Option<Box<dyn Plugin>>>>;
 
 pub struct App {
-   runtime: Runtime,
+   runtime: RwLock<Option<Runtime>>,
    plugins: RwLock<Plugins>,
    plugin_states: RwLock<HashMap<String, State>>,
    running_plugins: Mutex<Vec<String>>,
@@ -33,7 +33,7 @@ pub struct App {
 impl App {
    pub fn new() -> Self {
       App {
-         runtime: Builder::new_multi_thread().enable_all().build().unwrap(),
+         runtime: RwLock::new(None),
          plugins: RwLock::new(HashMap::new()),
          plugin_states: RwLock::new(HashMap::new()),
          running_plugins: Mutex::new(Vec::new()),
@@ -87,6 +87,15 @@ impl App {
 
    pub fn init(&self) {
       self.options.parse();
+      let mut runtime = self.runtime.try_write().unwrap();
+      let mut builder = Builder::new_multi_thread();
+      if let Some(worker_threads) = self.options.value_of_t::<usize>("app::worker-threads") {
+         builder.worker_threads(worker_threads);
+      }
+      if let Some(max_blocking_threads) = self.options.value_of_t::<usize>("app::max-blocking-threads") {
+         builder.max_blocking_threads(max_blocking_threads);
+      }
+      runtime.replace(builder.enable_all().build().unwrap());
       if let Some(capacity) = self.options.value_of_t::<usize>("app::channel-capacity") {
          self.channels.set_capacity(capacity);
       }
@@ -122,16 +131,17 @@ impl App {
       if self.running_plugins.try_lock().unwrap().len() == 0 {
          return;
       }
-      self.runtime.block_on(async {
+      self.runtime.try_read().unwrap().as_ref().unwrap().block_on(async {
          let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).unwrap();
          let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
 
          let is_quitting = self.is_quitting.try_read().unwrap().as_ref().unwrap().clone();
-         let main_loop = self.runtime.spawn_blocking(move || {
+         let main_loop = self.runtime.try_read().unwrap().as_ref().unwrap().spawn_blocking(move || {
             loop {
                if is_quitting.load(Ordering::Relaxed) {
                   break;
                }
+               std::thread::sleep(std::time::Duration::from_secs(1));
             }
          });
          tokio::select! {
@@ -153,7 +163,7 @@ impl App {
    fn shutdown(&self) {
       self.quit();
       let is_quitting = self.is_quitting.write().unwrap().take().unwrap();
-      self.runtime.block_on(async {
+      self.runtime.try_read().unwrap().as_ref().unwrap().block_on(async {
          log::info!("try graceful shutdown...");
          while Arc::strong_count(&is_quitting) > 1 {
          }
@@ -185,11 +195,11 @@ impl App {
    }
 
    pub fn spawn<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output> where F: std::future::Future + Send + 'static, F::Output: Send + 'static {
-      self.runtime.spawn(future)
+      self.runtime.try_read().unwrap().as_ref().unwrap().spawn(future)
    }
 
    pub fn spawn_blocking<F, R>(&self, func: F) -> tokio::task::JoinHandle<R> where F: FnOnce() -> R + Send + 'static, R: Send + 'static {
-      self.runtime.spawn_blocking(func)
+      self.runtime.try_read().unwrap().as_ref().unwrap().spawn_blocking(func)
    }
 
    pub fn quit_handle(&self) -> Option<QuitHandle> {
