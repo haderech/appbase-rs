@@ -56,7 +56,7 @@ impl Plugin for JsonRpcPlugin {
       let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::from_str(&host).unwrap()), port);
       if let Ok(server) = ServerBuilder::new(io).start_http(&socket) {
          self.server = Some(server.close_handle());
-         std::thread::spawn(move || {
+         APP.spawn_blocking(move || {
             server.wait();
          });
       }
