@@ -27,7 +27,7 @@ pub struct App {
    running_plugins: Mutex<Vec<String>>,
    pub channels: Channels,
    pub options: Options,
-   is_quitting: RwLock<Option<Arc<AtomicBool>>>,
+   is_quitting: Arc<AtomicBool>,
 }
 
 impl App {
@@ -38,7 +38,7 @@ impl App {
          plugin_states: RwLock::new(HashMap::new()),
          running_plugins: Mutex::new(Vec::new()),
          channels: Channels::new(),
-         is_quitting: RwLock::new(Some(Arc::new(AtomicBool::new(false)))),
+         is_quitting: Arc::new(AtomicBool::new(false)),
          options: Options::new(&current_exe()),
       }
    }
@@ -107,12 +107,9 @@ impl App {
    }
 
    pub fn startup(&self) {
-      {
-         let is_quitting = self.is_quitting.try_read().unwrap();
-         if is_quitting.is_none() || is_quitting.as_ref().unwrap().load(Ordering::Relaxed) {
-            log::warn!("cannot start closing app...");
-            return;
-         }
+      if self.is_quitting.load(Ordering::Acquire) {
+         log::warn!("cannot start closing app...");
+         return;
       }
       match self.plugins.try_read() {
          Ok(plugins) => {
@@ -132,13 +129,15 @@ impl App {
          return;
       }
       self.runtime.try_read().unwrap().as_ref().unwrap().block_on(async {
-         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).unwrap();
-         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+         use tokio::signal::unix::*;
 
-         let is_quitting = self.is_quitting.try_read().unwrap().as_ref().unwrap().clone();
+         let mut sigint = signal(SignalKind::interrupt()).unwrap();
+         let mut sigterm = signal(SignalKind::terminate()).unwrap();
+
+         let is_quitting = self.is_quitting.clone();
          let main_loop = self.runtime.try_read().unwrap().as_ref().unwrap().spawn_blocking(move || {
             loop {
-               if is_quitting.load(Ordering::Relaxed) {
+               if is_quitting.load(Ordering::Acquire) {
                   break;
                }
                std::thread::sleep(std::time::Duration::from_secs(1));
@@ -154,18 +153,14 @@ impl App {
    }
 
    pub fn quit(&self) {
-      let is_quitting = self.is_quitting.try_read().unwrap();
-      if let Some(is_quitting) = is_quitting.as_ref() {
-         is_quitting.store(true, Ordering::Relaxed);
-      }
+      self.is_quitting.store(true, Ordering::Release);
    }
 
    fn shutdown(&self) {
       self.quit();
-      let is_quitting = self.is_quitting.write().unwrap().take().unwrap();
       self.runtime.try_read().unwrap().as_ref().unwrap().block_on(async {
          log::info!("try graceful shutdown...");
-         while Arc::strong_count(&is_quitting) > 1 {
+         while Arc::strong_count(&self.is_quitting) > 1 {
          }
          for name in self.running_plugins.try_lock().unwrap().iter().rev() {
             if let Some(p) = self.plugins.try_read().unwrap().get(name).unwrap().try_lock().unwrap().as_mut() {
@@ -203,13 +198,7 @@ impl App {
    }
 
    pub fn quit_handle(&self) -> Option<QuitHandle> {
-      let is_quitting = self.is_quitting.try_read().unwrap();
-      if is_quitting.is_some() && !is_quitting.as_ref().unwrap().load(Ordering::Relaxed) {
-         return Some(QuitHandle {
-            is_quitting: Some(is_quitting.as_ref().unwrap().clone()),
-         });
-      }
-      None
+      (!self.is_quitting.load(Ordering::Acquire)).then_some(QuitHandle { is_quitting: Some(self.is_quitting.clone()) })
    }
 }
 
@@ -219,15 +208,13 @@ pub struct QuitHandle {
 
 impl QuitHandle {
    pub fn is_quitting(&self) -> bool {
-      match self.is_quitting.as_ref() {
-         Some(is_quitting) => is_quitting.load(Ordering::Relaxed),
+      match &self.is_quitting {
+         Some(q) => q.load(Ordering::Acquire),
          None => true,
       }
    }
    pub fn quit(&mut self) {
-      if let Some(is_quitting) = self.is_quitting.as_ref() {
-         is_quitting.store(true, Ordering::Relaxed)
-      }
+      self.is_quitting.take().map(|q| q.store(true, Ordering::Release));
    }
 }
 
