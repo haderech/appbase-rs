@@ -22,16 +22,15 @@ impl Channels {
    }
 
    pub fn get(&self, ch: &str) -> Sender {
-      {
-         let map = self.map.try_read().unwrap();
-         if let Some(channel) = map.get(ch) {
-            return channel.clone();
-         }
+      match self.map.try_read().unwrap().get(ch).map(|c| c.clone()) {
+         Some(c) => return c,
+         None => (),
       }
-      let mut map = self.map.try_write().unwrap();
-      let (tx, _) = broadcast::channel(self.capacity.load(Ordering::Relaxed));
-      map.insert(String::from(ch), tx);
-      map.get(ch).unwrap().clone()
+      self.map.try_write().map(|mut m| {
+         let (tx, _) = broadcast::channel(self.capacity.load(Ordering::Acquire));
+         m.insert(String::from(ch), tx.clone());
+         tx
+      }).unwrap()
    }
 
    pub fn subscribe(&self, ch: &str) -> Receiver {
@@ -39,6 +38,6 @@ impl Channels {
    }
 
    pub fn set_capacity(&self, capacity: usize) {
-      self.capacity.store(capacity, Ordering::Relaxed);
+      self.capacity.store(capacity, Ordering::Release);
    }
 }
