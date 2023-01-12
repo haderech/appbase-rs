@@ -2,13 +2,13 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 
-pub struct Options {
-   app: Mutex<Option<clap::App<'static>>>,
+pub struct Options<'a> {
+   app: Mutex<Option<clap::App<'a>>>,
    parsed: RwLock<Option<clap::ArgMatches>>,
    toml: RwLock<Option<toml::Value>>,
 }
 
-impl Options {
+impl<'a> Options<'a> {
    pub(super) fn new(s: &str) -> Self {
       Options {
          app: Mutex::new(Some(clap::App::new(s)
@@ -23,15 +23,9 @@ impl Options {
    }
 
    pub fn name(&self, s: &str) {
-      let inner: clap::App<'static>;
-      {
-         let app = self.app.try_lock();
-         if app.is_err() {
-            panic!("locked: app options");
-         }
-         inner = app.unwrap().take().unwrap().name(s);
-      }
-      self.app.try_lock().unwrap().replace(inner);
+      let mut app = self.app.try_lock().expect("locked: app options");
+      let new = app.take().unwrap().name(s);
+      app.replace(new);
    }
 
    pub fn is_parsed(&self) -> bool {
@@ -40,17 +34,10 @@ impl Options {
 
    pub fn parse(&self) {
       {
-         let app = self.app.try_lock();
-         if app.is_err() {
-            panic!("locked: app options");
-         }
-
+         let mut app = self.app.try_lock().expect("locked: app options");
          // parse CLI options
-         let parsed = self.parsed.try_write();
-         if parsed.is_err() {
-            panic!("locked: parsed options");
-         }
-         parsed.unwrap().replace(app.unwrap().take().unwrap().get_matches());
+         let mut parsed = self.parsed.try_write().expect("locked: parsed options");
+         parsed.replace(app.take().unwrap().get_matches());
       } // drop `app`, `parsed` lock
 
       // parse config.toml file (if exists)
@@ -65,24 +52,15 @@ impl Options {
          let mut file = std::fs::File::open(pathbuf.as_path()).unwrap();
          let mut data = String::new();
          let _ = file.read_to_string(&mut data);
-         let toml = self.toml.try_write();
-         if toml.is_err() {
-            panic!("locked: toml options");
-         }
-         toml.unwrap().replace(data.parse::<toml::Value>().unwrap());
+         let mut toml = self.toml.try_write().expect("locked: toml options");
+         toml.replace(data.parse::<toml::Value>().unwrap());
       }
    }
 
-   pub fn arg<A: Into<clap::Arg<'static>>>(&self, a: A) {
-      let inner: clap::App<'static>;
-      {
-         let app = self.app.try_lock();
-         if app.is_err() {
-            panic!("locked: app options");
-         }
-         inner = app.unwrap().take().unwrap().arg(a);
-      }
-      self.app.try_lock().unwrap().replace(inner);
+   pub fn arg<A: Into<clap::Arg<'a>>>(&self, a: A) {
+      let mut app = self.app.try_lock().expect("locked: app options");
+      let new = app.take().unwrap().arg(a);
+      app.replace(new);
    }
 
    pub fn is_present(&self, id: &str) -> bool {
@@ -107,15 +85,10 @@ impl Options {
          }
       }
 
-      if let Some(value) = self.value_from_toml(id) {
-         if let Some(s) = value.as_str() {
-            return Some(String::from(s));
-         }
-      }
-      None
+      self.value_from_toml(id).map(|value| value.as_str().map(|s| String::from(s))).flatten()
    }
 
-   pub fn value_of_t<R>(&self, id: &str) -> Option<R> where R: std::str::FromStr + serde::Deserialize<'static>, <R as std::str::FromStr>::Err: std::fmt::Display {
+   pub fn value_of_t<R>(&self, id: &str) -> Option<R> where R: std::str::FromStr + serde::Deserialize<'a>, <R as std::str::FromStr>::Err: std::fmt::Display {
       {
          let parsed = self.parsed.try_read().unwrap();
          if let Ok(value) = parsed.as_ref().unwrap().value_of_t::<R>(id) {
@@ -123,10 +96,7 @@ impl Options {
          }
       }
 
-      if let Some(value) = self.value_from_toml(id) {
-         return value.clone().try_into::<R>().ok();
-      }
-      None
+      self.value_from_toml(id).map(|value| value.clone().try_into::<R>().ok()).flatten()
    }
 
    pub fn values_of(&self, id: &str) -> Option<Vec<String>> {
@@ -137,13 +107,10 @@ impl Options {
          }
       }
 
-      if let Some(value) = self.value_from_toml(id) {
-         return Some(value.as_array().unwrap().iter().map(|x| String::from(x.as_str().unwrap())).collect());
-      }
-      None
+      self.value_from_toml(id).map(|value| value.as_array().unwrap().iter().map(|x| String::from(x.as_str().unwrap())).collect())
    }
 
-   pub fn values_of_t<R>(&self, id: &str) -> Option<Vec<R>> where R: std::str::FromStr + serde::Deserialize<'static>, <R as std::str::FromStr>::Err: std::fmt::Display {
+   pub fn values_of_t<R>(&self, id: &str) -> Option<Vec<R>> where R: std::str::FromStr + serde::Deserialize<'a>, <R as std::str::FromStr>::Err: std::fmt::Display {
       {
          let parsed = self.parsed.try_read().unwrap();
          if let Ok(value) = parsed.as_ref().unwrap().values_of_t::<R>(id) {
@@ -151,22 +118,18 @@ impl Options {
          }
       }
 
-      if let Some(value) = self.value_from_toml(id) {
-         return Some(value.as_array().unwrap().iter().map(|x| x.clone().try_into::<R>().unwrap()).collect());
-      }
-      None
+      self.value_from_toml(id).map(|value| value.as_array().unwrap().iter().map(|x| x.clone().try_into::<R>().unwrap()).collect())
    }
 
    fn value_from_toml(&self, id: &str) -> Option<toml::Value> {
-      let toml= self.toml.try_read().unwrap();
-      if toml.is_some() {
-         let mut ids = id.split("::");
-         if let Some(group) = toml.as_ref().unwrap().as_table().unwrap().get(ids.next().unwrap()) {
-            if let Some(value) = group.as_table().unwrap().get(ids.next().unwrap()) {
-               return Some(value.clone());
-            }
-         }
+      match self.toml.try_read().unwrap().as_ref() {
+         Some(toml) => {
+            let mut ids = id.split("::");
+            toml.as_table().unwrap().get(ids.next().unwrap()).map(|group| {
+               group.as_table().unwrap().get(ids.next().unwrap()).map(|value| value.clone())
+            }).flatten()
+         },
+         None => None,
       }
-      None
    }
 }

@@ -20,17 +20,17 @@ pub static APP: Lazy<App> = Lazy::new(|| {
 
 pub type Plugins = HashMap<String, Mutex<Option<Box<dyn Plugin>>>>;
 
-pub struct App {
+pub struct App<'a> {
    runtime: RwLock<Option<Runtime>>,
    plugins: RwLock<Plugins>,
    plugin_states: RwLock<HashMap<String, State>>,
    running_plugins: Mutex<Vec<String>>,
    pub channels: Channels,
-   pub options: Options,
+   pub options: Options<'a>,
    is_quitting: Arc<AtomicBool>,
 }
 
-impl App {
+impl<'a> App<'a> {
    pub fn new() -> Self {
       App {
          runtime: RwLock::new(None),
