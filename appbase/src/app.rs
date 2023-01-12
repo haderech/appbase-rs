@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use atomic::Atomic;
 use once_cell::sync::Lazy;
 use tokio::runtime::{Builder, Runtime};
 
@@ -18,13 +19,15 @@ pub static APP: Lazy<App> = Lazy::new(|| {
    App::new()
 });
 
-pub type Plugins = HashMap<String, Mutex<Option<Box<dyn Plugin>>>>;
+struct RegisteredPlugin {
+   inner: Mutex<Option<Box<dyn Plugin>>>,
+   state: Atomic<State>,
+}
 
 pub struct App<'a> {
    runtime: RwLock<Option<Runtime>>,
-   plugins: RwLock<Plugins>,
-   plugin_states: RwLock<HashMap<String, State>>,
-   running_plugins: Mutex<Vec<String>>,
+   plugins: RwLock<HashMap<&'static str, RegisteredPlugin>>,
+   running_plugins: Mutex<Vec<&'static str>>,
    pub channels: Channels,
    pub options: Options<'a>,
    is_quitting: Arc<AtomicBool>,
@@ -35,7 +38,6 @@ impl<'a> App<'a> {
       App {
          runtime: RwLock::new(None),
          plugins: RwLock::new(HashMap::new()),
-         plugin_states: RwLock::new(HashMap::new()),
          running_plugins: Mutex::new(Vec::new()),
          channels: Channels::new(),
          is_quitting: Arc::new(AtomicBool::new(false)),
@@ -50,60 +52,52 @@ impl<'a> App<'a> {
    pub fn register<P: Plugin>(&self) {
       if self.is_registered::<P>() {
          return;
-      } else {
-         // temporary add None with plugin name to prevent recursive registration
-         self.plugins.try_write().unwrap().insert(String::from(P::type_name()), Mutex::new(None));
-         self.plugin_states.try_write().unwrap().insert(String::from(P::type_name()), State::Registered);
       }
+      // Prevent repeated registration by cyclic dependency
+      self.plugins.try_write().unwrap().insert(
+         P::type_name(),
+         RegisteredPlugin {
+            inner: Mutex::new(None),
+            state: Atomic::new(State::Registered),
+         },
+      );
       let p = Box::new(P::new());
       p.resolve_deps();
-      self.plugins.try_write().unwrap().get_mut(P::type_name()).unwrap().try_lock().unwrap().replace(p);
+      let ps = self.plugins.try_read().expect("locked: plugins");
+      let rp = ps.get(P::type_name()).unwrap();
+      rp.inner.try_lock().unwrap().replace(p);
    }
 
-   fn _plugin_init(&self, name: &str) {
-      if !self.options.is_parsed() {
-         self.init();
-      }
-      match self.plugins.try_read() {
-         Ok(plugins) => {
-            plugins.get(name).unwrap().try_lock().unwrap().as_mut().unwrap()._init();
-         },
-         Err(_) => panic!("locked: plugins"),
-      }
+   fn plugin_init_by_name(&self, name: &str) {
+      (!self.options.is_parsed()).then(|| self.init());
+      let ps = self.plugins.try_read().expect("locked: plugins");
+      let rp = ps.get(name).unwrap();
+      rp.inner.try_lock().unwrap().as_mut().unwrap()._init();
    }
 
    pub fn plugin_init<P: Plugin>(&self) {
-      self._plugin_init(P::type_name());
+      self.plugin_init_by_name(P::type_name());
    }
 
    pub fn plugin_startup<P: Plugin>(&self) {
-      match self.plugins.try_read() {
-         Ok(plugins) => {
-            plugins.get(P::type_name()).unwrap().try_lock().unwrap().as_mut().unwrap()._startup();
-         },
-         Err(_) => panic!("locked: plugins"),
-      }
+      let ps = self.plugins.try_read().expect("locked: plugins");
+      let rp = ps.get(P::type_name()).unwrap();
+      rp.inner.try_lock().unwrap().as_mut().unwrap()._startup();
    }
 
    pub fn init(&self) {
       self.options.parse();
+
       let mut runtime = self.runtime.try_write().unwrap();
       let mut builder = Builder::new_multi_thread();
-      if let Some(worker_threads) = self.options.value_of_t::<usize>("app::worker-threads") {
-         builder.worker_threads(worker_threads);
-      }
-      if let Some(max_blocking_threads) = self.options.value_of_t::<usize>("app::max-blocking-threads") {
-         builder.max_blocking_threads(max_blocking_threads);
-      }
+
+      self.options.value_of_t::<usize>("app::worker-threads").map(|wt| builder.worker_threads(wt));
+      self.options.value_of_t::<usize>("app::max-blocking-threads").map(|mbt| builder.max_blocking_threads(mbt));
+
       runtime.replace(builder.enable_all().build().unwrap());
-      if let Some(capacity) = self.options.value_of_t::<usize>("app::channel-capacity") {
-         self.channels.set_capacity(capacity);
-      }
-      if let Some(names) = self.options.values_of("app::plugin") {
-         for name in names {
-            self._plugin_init(&name);
-         }
-      }
+
+      self.options.value_of_t::<usize>("app::channel-capacity").map(|cc| self.channels.set_capacity(cc));
+      self.options.values_of("app::plugin").map(|ps| for p in ps { self.plugin_init_by_name(&p); });
    }
 
    pub fn startup(&self) {
@@ -111,16 +105,10 @@ impl<'a> App<'a> {
          log::warn!("cannot start closing app...");
          return;
       }
-      match self.plugins.try_read() {
-         Ok(plugins) => {
-            let mut itr = plugins.iter();
-            while let Some((k, p)) = itr.next() {
-               if *self.plugin_states.try_read().unwrap().get(k).unwrap() == State::Initialized {
-                  p.try_lock().unwrap().as_mut().unwrap()._startup();
-               }
-            }
-         },
-         Err(_) => panic!("locked: plugins"),
+      for (_, rp) in self.plugins.try_read().unwrap().iter() {
+         if rp.state.load(Ordering::Acquire) == State::Initialized {
+            rp.inner.try_lock().unwrap().as_mut().unwrap()._startup();
+         }
       }
    }
 
@@ -163,29 +151,27 @@ impl<'a> App<'a> {
          while Arc::strong_count(&self.is_quitting) > 1 {
          }
          for name in self.running_plugins.try_lock().unwrap().iter().rev() {
-            if let Some(p) = self.plugins.try_read().unwrap().get(name).unwrap().try_lock().unwrap().as_mut() {
+            if let Some(p) = self.plugins.try_read().unwrap().get(name).unwrap().inner.try_lock().unwrap().as_mut() {
                p._shutdown();
-            }
+            };
          }
       });
    }
 
    pub fn run_with<P: Plugin, R, F>(&self, f: F) -> R where F: FnOnce(&mut P) -> R {
-      let plugins = self.plugins.try_read().unwrap();
-      let mut p = plugins.get(P::type_name()).unwrap().try_lock().unwrap();
+      let ps = self.plugins.try_read().expect("locked: plugins");
+      let mut p = ps.get(P::type_name()).unwrap().inner.try_lock().unwrap();
       f(p.as_mut().unwrap().downcast_mut::<P>().unwrap())
    }
 
    pub fn state_of<P: Plugin>(&self) -> State {
-      self.plugin_states.try_read().unwrap().get(P::type_name()).unwrap().clone()
+      self.plugins.try_read().unwrap().get(P::type_name()).map(|rp| rp.state.load(Ordering::Acquire)).unwrap()
    }
 
    pub fn set_state_of<P: Plugin>(&self, state: State) {
-      let mut states = self.plugin_states.try_write().unwrap();
-      let s = states.get_mut(P::type_name()).unwrap();
-      *s = state;
+      self.plugins.try_read().unwrap().get(P::type_name()).map(|rp| rp.state.store(state, Ordering::Release));
       if state == State::Started {
-         self.running_plugins.try_lock().unwrap().push(String::from(P::type_name()));
+         self.running_plugins.try_lock().unwrap().push(P::type_name());
       }
    }
 
